@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SlateClock Admin</title>
+<style>
+  :root{
+    --primary:#111; --primary-hover:#000;
+    --bg:#f6f6f7; --card:#fff; --border:#ddd;
+    --radius:10px; --gap:.9rem; --ctrl-h:44px;
+    --font:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;
+  }
+  html,body{height:100%}
+  body{margin:0; padding:1.25rem; background:var(--bg); font-family:var(--font); color:#111;}
+  h1{margin:0 0 1rem; text-align:center; font-weight:800;}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+        padding:1rem; margin-bottom:1rem; box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  label{font-weight:600; display:block; margin-bottom:.4rem}
+  input[type="text"], input[type="number"]{
+    height:var(--ctrl-h); line-height:var(--ctrl-h);
+    padding:0 .9rem; width:100%; font:inherit;
+    border:1px solid var(--border); border-radius:var(--radius); background:#fff; box-sizing:border-box; outline:none;
+  }
+  input[type="number"]{ -moz-appearance:textfield; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  input[type="checkbox"]{ transform:scale(1.2); margin-right:.6rem; vertical-align:middle; }
+  .row{ margin-bottom:.8rem; }
+
+  .btn{
+    -webkit-appearance:none; appearance:none;
+    height:var(--ctrl-h); line-height:calc(var(--ctrl-h) - 2px);
+    padding:0 1.1rem; border-radius:var(--radius);
+    background:var(--primary); color:#fff; font-weight:700;
+    border:1px solid var(--primary); cursor:pointer; white-space:nowrap;
+    display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box;
+  }
+  .btn:hover{ background:var(--primary-hover); }
+  .btn.block{ width:100%; }
+
+  .grid-2{ display:grid; grid-template-columns:1fr auto; gap:var(--gap); align-items:end; }
+  @media (max-width:720px){ .grid-2{ grid-template-columns:1fr; } .btn{ width:100%; } }
+</style>
+</head>
+<body>
+
+<h1>SlateClock Admin</h1>
+
+<!-- Тех-строка -->
+<div class="card">
+  <label for="note">Тех-строка (до 25 символів)</label>
+  <div class="grid-2">
+    <input id="note" type="text" maxlength="25" placeholder="введи текст">
+    <button id="saveNote" class="btn">Оновити</button>
+  </div>
+</div>
+
+<!-- Шторки -->
+<div class="card">
+  <label class="row"><input id="ease" type="checkbox"> Плавне закриття (ease-in-out)</label>
+  <div class="grid-2">
+    <div>
+      <label for="duration">Швидкість (мс)</label>
+      <input id="duration" type="number" min="60" max="5000" step="10" placeholder="600">
+    </div>
+    <button id="saveConfig" class="btn">Застосувати</button>
+  </div>
+</div>
+
+<!-- Дія -->
+<div class="card">
+  <button id="blink" class="btn block">БЛИМНУТИ</button>
+</div>
+
+<script>
+  // токен з URL (?token=...)
+  const token = new URLSearchParams(location.search).get('token') || '';
+  if(!token){ alert('Додай ?token=... до URL'); }
+
+  async function api(path, opts){
+    const r = await fetch(path, opts);
+    const j = await r.json().catch(()=>({ok:false}));
+    if(!j.ok) throw new Error('request failed'); return j;
+  }
+  async function getConfig(){ return api('/get-config?token='+encodeURIComponent(token)); }
+  async function setConfig(data){
+    return api('/set-config?token='+encodeURIComponent(token),{
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
+    });
+  }
+  async function setNote(note){
+    return api('/set?token='+encodeURIComponent(token)+'&note='+encodeURIComponent(note));
+  }
+  async function blink(){
+    return api('/blink?token='+encodeURIComponent(token), { method:'POST' });
+  }
+
+  (async ()=>{
+    try{
+      const j = await getConfig();
+      document.getElementById('note').value = j.note || '';
+      document.getElementById('ease').checked = !!(j.config && j.config.ease);
+      document.getElementById('duration').value = (j.config && j.config.duration) || 600;
+    }catch(e){ console.error(e); alert('Unauthorized або сервер недоступний'); }
+  })();
+
+  document.getElementById('saveNote').addEventListener('click', async ()=>{
+    try{ await setNote(document.getElementById('note').value || ''); }catch(e){ alert('Не вдалось оновити текст'); }
+  });
+  document.getElementById('saveConfig').addEventListener('click', async ()=>{
+    try{
+      const ease = document.getElementById('ease').checked;
+      let duration = parseInt(document.getElementById('duration').value || '600', 10);
+      if(!Number.isFinite(duration)) duration = 600;
+      if(duration < 60) duration = 60; if(duration > 5000) duration = 5000;
+      await setConfig({ ease, duration });
+    }catch(e){ alert('Не вдалось оновити налаштування'); }
+  });
+  document.getElementById('blink').addEventListener('click', async ()=>{
+    try{ await blink(); }catch(e){ alert('Не вдалось виконати “блимнути”'); }
+  });
+</script>
+
+</body>
+</html>
