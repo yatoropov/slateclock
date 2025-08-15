@@ -74,6 +74,20 @@ app.post('/blink', (req, res) => {
   res.json({ ok:true });
 });
 
+// === COUNTDOWN (адмін-дія) ===
+// Виклик: POST /countdown?token=XXX  body: { start: 5, final: "GO!" }
+app.post('/countdown', (req, res) => {
+  const token = req.query.token || req.body?.token;
+  if (token !== ADMIN_TOKEN) return res.status(401).json({ ok:false, error:'unauthorized' });
+
+  let start = parseInt(req.body.start ?? 5, 10);
+  if (!Number.isFinite(start) || start < 1) start = 5;
+
+  const final = (req.body.final ?? 'GO!').toString().slice(0, 32);
+
+  broadcast({ type: 'countdown', start, final });
+  res.json({ ok:true, start, final });
+});
 
 // Дуже проста адмінка з контролами
 app.get('/admin', (req,res)=>{
@@ -88,3 +102,4 @@ wss.on('connection', (ws)=>{
 });
 
 server.listen(PORT, ()=> console.log('SlateClock listening on :'+PORT));
+
