@@ -2,155 +2,231 @@
 <html lang="uk">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>SlateClock</title>
   <style>
-    :root { --bg:#000; --fg:#fff; --stripe:clamp(6px,1.2svh,14px); --dur:600ms; --ease: linear; }
-    body[data-invert="1"]{ --bg:#fff; --fg:#000; }
-    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
-      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;}
-    body{ cursor: none; overflow:hidden; }
-    .app{display:flex;flex-direction:column;height:100svh;}
-    .stripe{
-      flex:0 0 12svh;
-      border-bottom: var(--stripe) solid var(--fg);
-      background: repeating-linear-gradient(-45deg, var(--fg) 0 20px, var(--bg) 20px 40px);
-      touch-action: manipulation;
+    :root {
+      --bg: #000;
+      --fg: #fff;
+      --accent: #ff4444;
+      --hud-dim: rgba(255,255,255,0.07);
     }
-    .clock{flex:1;display:flex;align-items:center;justify-content:center;
-      font-weight:900; letter-spacing:.02em; font-variant-numeric: tabular-nums; line-height:.9;
-      font-size:min(16vw,32svh); user-select:none; padding:0 2vw; box-sizing:border-box;}
-    .info{flex:0 0 14svh; display:flex; align-items:center; justify-content:center;
-      border-top: var(--stripe) solid var(--fg); background:var(--bg);} 
-    .info #note{font-weight:800; text-transform:uppercase; letter-spacing:.12em; 
-      font-size:min(10vw,10svh); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-    .hud{position:fixed;left:1rem;bottom:1rem;font-size:.9rem;opacity:.35}
+    html, body {
+      margin:0; padding:0; height:100%; background:var(--bg); color:var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      cursor: none;
+    }
+    .root {
+      position: relative; width:100%; height:100%;
+      display:flex; align-items:center; justify-content:center; overflow:hidden;
+    }
+    /* Тех-строка */
+    .note {
+      position:absolute; bottom:2.5vmin; left:50%; transform:translateX(-50%);
+      font-weight:800; font-size:min(8vmin, 72px); letter-spacing:0.02em; white-space:nowrap;
+      background: transparent;
+      text-shadow: 0 0 12px rgba(0,0,0,.35);
+      user-select: none;
+    }
+    /* HUD рамка (опціонально) */
+    .hud {
+      position:absolute; inset:3vmin; border:2px solid var(--hud-dim); border-radius:2vmin;
+      pointer-events:none;
+    }
+    /* Шторки */
+    .shutter {
+      position:absolute; left:0; right:0; height:50%; background:#000; z-index: 999;
+      transform: translateY(0);
+    }
+    .shutter.top { top:0; transform: translateY(-100%); }
+    .shutter.bot { bottom:0; transform: translateY(100%); }
+    .shutter.active.top { transform: translateY(0); }
+    .shutter.active.bot { transform: translateY(0); }
 
-    /* --- Shutter overlay --- */
-    .shutter{position:fixed;inset:0;pointer-events:none;}
-    .shutter .bar{position:absolute;left:0;right:0;background:var(--fg);}
-    .shutter .top{top:0;height:0;}
-    .shutter .bottom{bottom:0;height:0;}
-    /* Використовуємо змінні: тривалість і тип плавності керуються через WS */
-    .shutter.run .top{animation:topClose var(--dur) var(--ease) forwards;}
-    .shutter.run .bottom{animation:bottomClose var(--dur) var(--ease) forwards;}
-    @keyframes topClose{from{height:0} to{height:50vh}}
-    @keyframes bottomClose{from{height:0} to{height:50vh}}
+    /* COUNTDOWN overlay */
+    #countdownOverlay {
+      position: fixed; inset: 0; z-index: 2000; display: none;
+      align-items: center; justify-content: center;
+      background: #c00000; /* червоне тло */
+      color: #ffffff;       /* білі цифри */
+    }
+    #countdownText {
+      font-size: min(35vw, 35vh);
+      line-height: 1; font-weight: 900; letter-spacing: .02em;
+      text-align: center; user-select: none;
+      text-shadow: 0 0 18px rgba(0,0,0,.4);
+    }
+    /* Центральний великий годинник — як заповнювач (можеш змінити) */
+    .clock {
+      font-size: min(20vmin, 160px); font-weight:900; letter-spacing:.03em; user-select:none;
+      text-shadow: 0 0 18px rgba(0,0,0,.4);
+    }
   </style>
 </head>
 <body>
-  <div class="app">
-    <div class="stripe" id="topStripe"></div>
-    <div class="clock" id="clock">00:00:00.00</div>
-    <div class="info"><span id="note">—</span></div>
-  </div>
-  <div class="hud" id="hud">Space/Тап по верху — shutter · Double-click/F — fullscreen · E — змінити тех-строку</div>
-  <div class="shutter" id="shutter"><div class="bar top"></div><div class="bar bottom" id="shutterBottom"></div></div>
+  <div class="root" id="root">
+    <!-- Шторки -->
+    <div class="shutter top" id="shTop"></div>
+    <div class="shutter bot" id="shBot"></div>
 
-  <audio id="clap" src="single-clap.wav" preload="auto"></audio>
+    <!-- Основний контент -->
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="note" id="note">—</div>
+    <div class="hud" id="hud"></div>
+  </div>
+
+  <!-- COUNTDOWN overlay -->
+  <div id="countdownOverlay">
+    <div id="countdownText">5</div>
+  </div>
 
   <script>
-    const qs = new URLSearchParams(location.search);
+    // ===== URL params =====
+    const url = new URL(location.href);
+    const wsParam   = url.searchParams.get('ws');
+    const autoFs    = url.searchParams.get('autofs') === '1';
+    const noHud     = url.searchParams.get('nohud')  === '1';
+    const showCursor= url.searchParams.get('cursor') === '1';
 
-    // Тех-рядок (до 25 символів)
-    const noteEl = document.getElementById('note');
-    function setNote(raw){
-      let str = (raw ?? '—').toString();
-      const arr = Array.from(str);
-      if(arr.length>25) str = arr.slice(0,25).join('');
-      noteEl.textContent = str || '—';
-      try{ localStorage.setItem('slateclock_note', noteEl.textContent); }catch{}
+    if (showCursor) document.documentElement.style.cursor = 'auto';
+    if (noHud)      document.getElementById('hud').style.display = 'none';
+
+    // ===== Fullscreen (опція) =====
+    async function goFullscreen() {
+      if (document.fullscreenElement) return;
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch {}
     }
-    setNote(qs.get('note') ?? localStorage.getItem('slateclock_note') ?? '—');
+    if (autoFs) {
+      // намагаємось одразу; якщо браузер блокує — увімкнеться при першому keydown
+      goFullscreen();
+      window.addEventListener('keydown', ()=>goFullscreen(), { once:true });
+      window.addEventListener('pointerdown', ()=>goFullscreen(), { once:true });
+    }
 
-    // Повноекранний + локальне редагування
-    function goFS(){ if(!document.fullscreenElement){ document.documentElement.requestFullscreen().catch(()=>{});} }
-    document.addEventListener('dblclick', goFS);
-    document.addEventListener('keydown', e=>{
-      const k=e.key.toLowerCase();
-      if(k==='f') goFS();
-      if(k==='e'){
-        const v = prompt('Нова тех-строка (до 25 символів):', localStorage.getItem('slateclock_note')||'');
-        if(v!=null) setNote(v);
+    // ===== Годинник локальний (можеш замінити на серверний час, якщо треба) =====
+    const clockEl = document.getElementById('clock');
+    function tick() {
+      const d = new Date();
+      const hh = String(d.getHours()).padStart(2,'0');
+      const mm = String(d.getMinutes()).padStart(2,'0');
+      const ss = String(d.getSeconds()).padStart(2,'0');
+      clockEl.textContent = `${hh}:${mm}:${ss}`;
+    }
+    setInterval(tick, 200);
+    tick();
+
+    // ===== Шторки =====
+    let shutterCfg = { ease:false, duration:600 };
+    const shTop = document.getElementById('shTop');
+    const shBot = document.getElementById('shBot');
+
+    function applyShutterTransition() {
+      const t = shutterCfg.duration || 600;
+      const easing = shutterCfg.ease ? 'cubic-bezier(.22,.61,.36,1)' : 'linear';
+      shTop.style.transition = `transform ${t}ms ${easing}`;
+      shBot.style.transition = `transform ${t}ms ${easing}`;
+    }
+    applyShutterTransition();
+
+    function blinkShutters() {
+      shTop.classList.add('active');
+      shBot.classList.add('active');
+      setTimeout(()=>{
+        shTop.classList.remove('active');
+        shBot.classList.remove('active');
+      }, (shutterCfg.duration || 600) + 30);
+    }
+
+    // SPACE — блимнути
+    window.addEventListener('keydown', (e)=>{
+      if (e.code === 'Space') {
+        e.preventDefault();
+        blinkShutters();
       }
     });
 
-    if(qs.get('nohud')==='1') document.getElementById('hud').style.display='none';
-    if(qs.get('cursor')==='1') document.body.style.cursor='auto';
+    // ===== Тех-строка =====
+    const noteEl = document.getElementById('note');
 
-    // Годинник + інверсія щогодини
-    const clock = document.getElementById('clock');
-    const OFFSET = Date.now() - performance.now();
-    let lastHourTick = -1;
-    const pad2 = n => String(n).padStart(2,'0');
-    function tick(){
-      const nowMs = performance.now() + OFFSET;
-      const d = new Date(nowMs);
-      const txt = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${pad2(Math.floor(d.getMilliseconds()/10))}`;
-      clock.textContent = txt;
-      const hourTick = Math.floor(nowMs / 3600000);
-      if(hourTick!==lastHourTick){ document.body.dataset.invert = String(hourTick % 2); lastHourTick = hourTick; }
-      requestAnimationFrame(tick);
+    // ===== WebSocket =====
+    function makeDefaultWsUrl() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return proto + '//' + location.host;
     }
-    requestAnimationFrame(tick);
+    const wsUrl = wsParam || makeDefaultWsUrl();
+    const ws = new WebSocket(wsUrl);
 
-    // --- Space/Click on top: шторки + звук у момент дотику ---
-    const shutter = document.getElementById('shutter');
-    const bottomBar = document.getElementById('shutterBottom');
-    const clap = document.getElementById('clap');
-    let shutterBusy = false;
+    ws.addEventListener('open', ()=>{/* ok */});
+    ws.addEventListener('error', ()=>{/* silent */});
 
-    function applyConfig(cfg){
-      // Керуємо CSS-змінними
-      const dur = Math.max(60, Math.min(5000, Number(cfg?.duration || 600)));
-      document.documentElement.style.setProperty('--dur', dur + 'ms');
-      document.documentElement.style.setProperty('--ease', (cfg && cfg.ease) ? 'ease-in-out' : 'linear');
-    }
+    ws.addEventListener('message', (ev)=>{
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      if (!msg || typeof msg !== 'object') return;
 
-    function runShutter(){
-      if(shutterBusy) return;
-      shutterBusy = true;
-      shutter.classList.remove('run'); void shutter.offsetWidth; // рестарт анімації
-      shutter.classList.add('run');
-      const onEnd = () => {
-        try { clap.currentTime = 0; clap.play().catch(()=>{}); } catch {}
-        setTimeout(()=>{ shutter.classList.remove('run'); shutterBusy = false; }, 120);
-      };
-      bottomBar.addEventListener('animationend', onEnd, { once: true });
-    }
-
-    window.addEventListener('keydown', (e)=>{
-      if(e.code==='Space'){ e.preventDefault(); runShutter(); }
-    }, {capture:true});
-
-    const topStripe = document.getElementById('topStripe');
-    ['pointerdown','click','touchstart'].forEach(evt => {
-      topStripe.addEventListener(evt, (e) => { e.preventDefault(); runShutter(); }, { passive:false });
+      if (msg.type === 'note') {
+        noteEl.textContent = msg.note || '—';
+      }
+      else if (msg.type === 'config' && msg.config) {
+        shutterCfg = {
+          ease: !!msg.config.ease,
+          duration: Number(msg.config.duration) || 600
+        };
+        applyShutterTransition();
+      }
+      else if (msg.type === 'blink') {
+        blinkShutters();
+      }
+      else if (msg.type === 'countdown') {
+        const start = Number(msg.start) || 5;
+        const final = (msg.final ?? 'GO!').toString();
+        startCountdown(start, final);
+      }
     });
 
-    // WebSocket: note + новий тип config
-    const wsUrl = qs.get('ws');
-    if(wsUrl){
-      (function connect(){
-        let ws;
-        try{ ws = new WebSocket(wsUrl); }catch(e){ setTimeout(connect,2000); return; }
-        ws.onopen = ()=>console.log('WS connected');
-        ws.onmessage = ev=>{
-          try{
-            const msg = JSON.parse(ev.data);
-            if(msg.type==='note') setNote(msg.note);
-            if(msg.type==='config') applyConfig(msg.config);
-            if(msg.type==='blink') runShutter();
-          }catch{}
-        };
-        ws.onclose = ()=> setTimeout(connect, 2000);
-        ws.onerror = ()=> { try{ ws.close(); }catch{} };
-      })();
+    // ===== COUNTDOWN =====
+    let countdownTimer = null;
+    let finalTimer = null;
+    const cdOverlay = document.getElementById('countdownOverlay');
+    const cdText    = document.getElementById('countdownText');
+
+    function clearCountdownTimers() {
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+      if (finalTimer)     { clearTimeout(finalTimer);     finalTimer = null; }
     }
 
-    // Авто-fullscreen
-    if(qs.get('autofs')==='1') setTimeout(goFS, 300);
+    function startCountdown(start, finalText) {
+      clearCountdownTimers();
+
+      let n = parseInt(start, 10);
+      if (!Number.isFinite(n) || n < 1) n = 5;
+
+      // Початок: червоне тло, білі цифри
+      cdOverlay.style.display = 'flex';
+      cdOverlay.style.background = '#c00000';
+      cdOverlay.style.color = '#ffffff';
+      cdText.style.color = '#ffffff';
+      cdText.textContent = n;
+
+      countdownTimer = setInterval(()=>{
+        n--;
+        if (n > 0) {
+          cdText.textContent = n;
+        } else {
+          clearInterval(countdownTimer); countdownTimer = null;
+          // Фінальна фраза 3 сек: зелене тло з червоним текстом
+          cdOverlay.style.background = '#0ea800';
+          cdText.style.color = '#c00000';
+          cdText.textContent = (finalText || 'GO!').toString();
+          finalTimer = setTimeout(()=>{
+            cdOverlay.style.display = 'none';
+            clearCountdownTimers();
+          }, 3000);
+        }
+      }, 1000);
+    }
   </script>
 </body>
 </html>
